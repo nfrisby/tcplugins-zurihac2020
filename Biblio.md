@@ -53,6 +53,10 @@ Looks to be 11 years old. Probably inconsistent to varying degrees with current 
   * 2018 Oleg Grenrus "regular expression of types" https://github.com/phadej/kleene-type
   * 2018 Joachim Breitner "synthesis of singletons" https://github.com/nomeata/ghc-justdoit
   * 2020 Samuel Gélineau (gelisam), "type-level rewrite rules" [(GitHub)](https://hackage.haskell.org/package/typelevel-rewrite-rules)
+  * 2020 Matthías Páll Gissurarson (Tritlo)
+      * kind defaulting [(GitHub)](https://github.com/Tritlo/kind-default-plugin)
+      * security flow checking [(GitHub)](https://github.com/Tritlo/mac-lib-plugin)
+      * symmetric idempotent normalizer [(GitHub)](https://github.com/Tritlo/ghc-typelits-extra-sianormalise)
 
 ## Posts
 

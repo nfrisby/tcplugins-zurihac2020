@@ -12,6 +12,7 @@ Missing/limited desiderata
   * [ ] easy access to reified inert substitution and/or flattening substitution
   * [ ] easy influence over flattening substitution (eg tv-tv equality orientation)
   * [ ] custom type formers (so tyfam abuse wouldn't be as necessary)
+  * [ ] programmable plugins (eg user assertions, like Tritlo wants `{-# ANN type Max Symmetric #-}` which would be a bit nicer than passing -fplugin-opt eg)
 
 Reference documentation
 

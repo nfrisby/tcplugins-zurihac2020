@@ -37,6 +37,7 @@ Looks to be 11 years old. Probably inconsistent to varying degrees with current 
 
 ## Publications
 
+  * 1995 Mark Jones "Simplifying and Improving Qualified Types" [(pdx.edu)](http://web.cecs.pdx.edu/~mpj/pubs/improve.html)
   * 2015 Adam Gundry "A Typechecker Plugin for Units of Measure" [(GitHub)](https://github.com/adamgundry/uom-plugin)
   * 2015 Iavor Diatchki (yav) "Improving Haskell Types with SMT" [(GitHub)](https://github.com/yav/type-nat-solver)
   * 2016 Jan Bracker, Henrik Nilsson "Supermonads" [(GitHub)](https://github.com/jbracker/supermonad)

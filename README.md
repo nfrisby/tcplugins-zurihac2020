@@ -11,3 +11,5 @@ ZuriHac 2020.
 [`./ToDo.md`](./ToDo.md) the evolving plan
 
 [`./Biblio.md`](./Biblio.md) annotated bibliography
+
+[`./GHC-track-presentation`](./GHC-track-presentation) contains Frisby's slides from ZuriHac 2020 GHC Track. Will include eventual errata etc.

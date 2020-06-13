@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>ZuriHac 2020 - Frisby</title>
+    <style type="text/css">
+      .pt36 { font-size: 36pt; }
+      .warn36::before { font-size: 36pt; color: red; content: "⚠ "; }
+
+      .textblock{ text-align: left; margin-left: auto; margin-right: auto; }
+      .width25{ width: 25em; }
+      .width32{ width: 32em; }
+      .spacer12{ width: 12em; display: inline-block; }
+      .spacer18{ width: 18em; display: inline-block; }
+
+      code.remark-inline-code { background-color: #F0F0F0; }
+
+      table { margin-left: 1em; border-collapse: collapse; }
+      td { width: 2em; text-align: center; }
+    </style>
+  </head>
+  <body>
+     <textarea id="source">
+name: title
+layout: true
+template: true
+class: center, middle
+
+---
+
+template: title
+
+## On "simple" constraints for typechecker plugins
+
+ZuriHac 2020
+
+nicolas.frisby@{gmail.com,tweag.io}
+
+<img style="width:20em;" src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4NCjwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAyNC4xLjEsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiA2LjAwIEJ1aWxkIDApICAtLT4NCjxzdmcgdmVyc2lvbj0iMS4xIiBpZD0iQ2FscXVlXzEiIHhtbG5zOnhvZG09Imh0dHA6Ly93d3cuY29yZWwuY29tL2NvcmVsZHJhdy9vZG0vMjAwMyINCgkgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayIgeD0iMHB4IiB5PSIwcHgiIHZpZXdCb3g9IjAgMCAyMjcuMSAyMi44Ig0KCSBzdHlsZT0iZW5hYmxlLWJhY2tncm91bmQ6bmV3IDAgMCAyMjcuMSAyMi44OyIgeG1sOnNwYWNlPSJwcmVzZXJ2ZSI+DQo8c3R5bGUgdHlwZT0idGV4dC9jc3MiPg0KCS5zdDB7ZmlsbC1ydWxlOmV2ZW5vZGQ7Y2xpcC1ydWxlOmV2ZW5vZGQ7fQ0KPC9zdHlsZT4NCjxnIGlkPSJQbGFuX3gwMDIwXzEiPg0KCTxwYXRoIGQ9Ik0xNDguMSwzLjdjMCwxLjIsMC43LDEuOSwxLjUsMi41bDAuOSwwLjdjMC42LDAuNCwxLjEsMC45LDEuMSwxLjZjMCwwLjctMC41LDEuMi0xLjIsMS4yYy0wLjcsMC0xLjItMC41LTEuMi0xLjRWNy42aC0xLjINCgkJdjAuN2MwLDEuNSwxLjEsMi40LDIuNCwyLjRjMS4zLDAsMi40LTAuOCwyLjQtMi40YzAtMS4yLTAuNy0xLjgtMS41LTIuNGwtMS0wLjdjLTAuNi0wLjQtMS4xLTAuOC0xLjEtMS41YzAtMC43LDAuNC0xLjEsMS4xLTEuMQ0KCQljMC43LDAsMS4xLDAuNCwxLjEsMS4zdjAuNWgxLjJWMy45YzAtMS42LTEtMi40LTIuMy0yLjRDMTQ5LjEsMS41LDE0OC4xLDIuMSwxNDguMSwzLjdMMTQ4LjEsMy43eiBNMTU2LjgsMTAuN2MxLjcsMCwzLTEuMywzLTMuMQ0KCQlzLTEuMy0zLjEtMy0zLjFjLTEuNywwLTMsMS4zLTMsMy4xUzE1NS4xLDEwLjcsMTU2LjgsMTAuN3ogTTE1Ni44LDkuNmMtMSwwLTEuOC0wLjgtMS44LTJzMC44LTIsMS44LTJjMSwwLDEuOCwwLjgsMS44LDINCgkJUzE1Ny45LDkuNiwxNTYuOCw5LjZ6IE0xNjIuOCwzLjdjMC0wLjgsMC40LTEuMSwxLjEtMS4xYzAuMywwLDAuNSwwLDAuNywwLjFWMS42Yy0wLjItMC4xLTAuNS0wLjEtMC44LTAuMWMtMS4zLDAtMi4yLDAuOC0yLjIsMi4yDQoJCXYwLjloLTF2MS4xaDF2NC45aDEuMlY1LjZoMi41djNjMCwxLjYsMC44LDIuMSwyLDIuMWMwLjMsMCwwLjctMC4xLDAuOS0wLjFWOS41Yy0wLjIsMC4xLTAuNCwwLjEtMC43LDAuMWMtMC43LDAtMS0wLjMtMS0xLjFWNS42DQoJCWgxLjdWNC42aC0xLjdWMi45aC0xLjJ2MS43aC0yLjVMMTYyLjgsMy43TDE2Mi44LDMuN3ogTTE3Ny44LDQuNmgtMS4ybC0xLjIsNWwtMS4zLTVoLTEuNWwtMS4zLDVsLTEuMi01SDE2OWwxLjYsNmgxLjVsMS4zLTUNCgkJbDEuMyw1aDEuNUwxNzcuOCw0LjZMMTc3LjgsNC42eiBNMTgyLjUsMTAuNmgxLjJWNi40YzAtMS40LTEuMi0xLjktMi41LTEuOWMtMS4zLDAtMi42LDAuNi0yLjYsMi4xaDEuMmMwLTAuOCwwLjUtMS4yLDEuMy0xLjINCgkJYzAuNywwLDEuMywwLjMsMS4zLDAuOWMwLDEuNC00LDAuMS00LDIuN2MwLDEuMiwxLDEuNywyLDEuN2MwLjksMCwxLjYtMC4zLDItMS4xTDE4Mi41LDEwLjZMMTgyLjUsMTAuNnogTTE3OS43LDguOQ0KCQljMC0xLDEuOC0wLjgsMi44LTEuMnYwLjRjMCwxLTAuOSwxLjYtMS44LDEuNkMxODAuMSw5LjcsMTc5LjcsOS40LDE3OS43LDguOXogTTE4Ni42LDcuNmMwLTEuMiwwLjctMS45LDEuOC0xLjkNCgkJYzAuMiwwLDAuNSwwLDAuNiwwLjFWNC41Yy0wLjEsMC0wLjIsMC0wLjQsMGMtMC45LDAtMS42LDAuNC0yLjEsMS4yVjQuNmgtMS4ydjZoMS4yVjcuNkwxODYuNiw3LjZ6IE0xOTUuNyw3LjYNCgkJYzAtMS44LTEuMi0zLjEtMy0zLjFzLTMsMS4zLTMsMy4xczEuMiwzLjEsMywzLjFjMS40LDAsMi40LTAuNywyLjgtMS45aC0xLjNjLTAuMiwwLjUtMC43LDAuOS0xLjUsMC45Yy0xLDAtMS43LTAuNi0xLjgtMS43aDQuNw0KCQlDMTk1LjcsNy45LDE5NS43LDcuNywxOTUuNyw3LjZMMTk1LjcsNy42eiBNMTkyLjcsNS41YzEsMCwxLjYsMC42LDEuOCwxLjZIMTkxQzE5MS4xLDYuMSwxOTEuOCw1LjUsMTkyLjcsNS41TDE5Mi43LDUuNXoNCgkJIE0xNDkuNSwyMi43di05aC0xLjJ2OUgxNDkuNXogTTE1Mi41LDE5LjRjMC0xLjIsMC42LTEuOCwxLjUtMS44YzAuOSwwLDEuNSwwLjYsMS41LDEuOHYzLjNoMS4ydi0zLjVjMC0xLjgtMS0yLjYtMi4zLTIuNg0KCQljLTAuOCwwLTEuNSwwLjQtMS44LDEuMXYtMC45aC0xLjJ2NmgxLjJMMTUyLjUsMTkuNEwxNTIuNSwxOS40eiBNMTU5LjUsMTkuNGMwLTEuMiwwLjYtMS44LDEuNS0xLjhjMC45LDAsMS41LDAuNiwxLjUsMS44djMuM2gxLjINCgkJdi0zLjVjMC0xLjgtMS0yLjYtMi4zLTIuNmMtMC44LDAtMS41LDAuNC0xLjgsMS4xdi0wLjloLTEuMnY2aDEuMkwxNTkuNSwxOS40TDE1OS41LDE5LjR6IE0xNjcuOSwyMi44YzEuNywwLDMtMS4zLDMtMy4xDQoJCWMwLTEuOC0xLjMtMy4xLTMtMy4xYy0xLjcsMC0zLDEuMy0zLDMuMUMxNjQuOSwyMS41LDE2Ni4yLDIyLjgsMTY3LjksMjIuOHogTTE2Ny45LDIxLjdjLTEsMC0xLjgtMC44LTEuOC0yYzAtMS4yLDAuOC0yLDEuOC0yDQoJCWMxLDAsMS44LDAuOCwxLjgsMkMxNjkuNywyMC45LDE2OC45LDIxLjcsMTY3LjksMjEuN3ogTTE3Ny4zLDE2LjdIMTc2bC0xLjYsNWwtMS42LTVoLTEuMmwyLDZoMS43TDE3Ny4zLDE2LjdMMTc3LjMsMTYuN3oNCgkJIE0xODIsMjIuN2gxLjJ2LTQuMmMwLTEuNC0xLjItMS45LTIuNS0xLjljLTEuMywwLTIuNiwwLjYtMi42LDIuMWgxLjJjMC0wLjgsMC41LTEuMiwxLjMtMS4yYzAuNywwLDEuMywwLjMsMS4zLDAuOQ0KCQljMCwxLjQtNCwwLjEtNCwyLjdjMCwxLjIsMSwxLjcsMiwxLjdjMC45LDAsMS42LTAuMywyLTEuMUwxODIsMjIuN0wxODIsMjIuN3ogTTE3OS4xLDIxYzAtMSwxLjgtMC44LDIuOC0xLjJ2MC40DQoJCWMwLDEtMC45LDEuNi0xLjgsMS42QzE3OS42LDIxLjgsMTc5LjEsMjEuNSwxNzkuMSwyMXogTTE4Ni4zLDIwLjZ2LTIuOWgxLjd2LTEuMWgtMS43di0xLjhoLTEuMnYxLjhoLTF2MS4xaDF2Mw0KCQljMCwxLjYsMC44LDIuMSwyLDIuMWMwLjMsMCwwLjctMC4xLDAuOS0wLjF2LTEuMWMtMC4yLDAuMS0wLjQsMC4xLTAuNywwLjFDMTg2LjcsMjEuNywxODYuMywyMS40LDE4Ni4zLDIwLjZ6IE0xOTAuMSwxNS40DQoJCWMwLjUsMCwwLjgtMC4zLDAuOC0wLjhjMC0wLjUtMC4zLTAuOC0wLjgtMC44Yy0wLjUsMC0wLjgsMC4zLTAuOCwwLjhDMTg5LjMsMTUsMTg5LjYsMTUuNCwxOTAuMSwxNS40eiBNMTkwLjcsMjIuN3YtNmgtMS4ydjYNCgkJSDE5MC43eiBNMTk1LjEsMjIuOGMxLjcsMCwzLTEuMywzLTMuMWMwLTEuOC0xLjMtMy4xLTMtMy4xcy0zLDEuMy0zLDMuMUMxOTIsMjEuNSwxOTMuMywyMi44LDE5NS4xLDIyLjh6IE0xOTUuMSwyMS43DQoJCWMtMSwwLTEuOC0wLjgtMS44LTJjMC0xLjIsMC44LTIsMS44LTJjMSwwLDEuOCwwLjgsMS44LDJDMTk2LjksMjAuOSwxOTYuMSwyMS43LDE5NS4xLDIxLjd6IE0yMDAuNiwxOS40YzAtMS4yLDAuNi0xLjgsMS41LTEuOA0KCQljMC45LDAsMS41LDAuNiwxLjUsMS44djMuM2gxLjJ2LTMuNWMwLTEuOC0xLTIuNi0yLjMtMi42Yy0wLjgsMC0xLjUsMC40LTEuOCwxLjF2LTAuOWgtMS4ydjZoMS4yTDIwMC42LDE5LjRMMjAwLjYsMTkuNHoNCgkJIE0yMTMuMywyMS42aC0yLjl2LTcuOWgtMS4ydjloNC4xTDIxMy4zLDIxLjZMMjEzLjMsMjEuNnogTTIxOC4yLDIyLjdoMS4ydi00LjJjMC0xLjQtMS4yLTEuOS0yLjUtMS45Yy0xLjMsMC0yLjYsMC42LTIuNiwyLjFoMS4yDQoJCWMwLTAuOCwwLjUtMS4yLDEuMy0xLjJjMC43LDAsMS4zLDAuMywxLjMsMC45YzAsMS40LTQsMC4xLTQsMi43YzAsMS4yLDEsMS43LDIsMS43YzAuOSwwLDEuNi0wLjMsMi0xLjFMMjE4LjIsMjIuN0wyMTguMiwyMi43eg0KCQkgTTIxNS4zLDIxYzAtMSwxLjgtMC44LDIuOC0xLjJ2MC40YzAsMS0wLjksMS42LTEuOCwxLjZDMjE1LjgsMjEuOCwyMTUuMywyMS41LDIxNS4zLDIxeiBNMjI3LjEsMTkuN2MwLTEuOC0xLjItMy4xLTIuOS0zLjENCgkJYy0wLjgsMC0xLjUsMC40LTIsMXYtMy45SDIyMXY5aDEuMnYtMC45YzAuNSwwLjYsMS4yLDEsMiwxQzIyNS44LDIyLjgsMjI3LjEsMjEuNSwyMjcuMSwxOS43eiBNMjI0LDE3LjdjMSwwLDEuOCwwLjgsMS44LDINCgkJYzAsMS4yLTAuOCwyLTEuOCwyYy0xLDAtMS44LTAuOC0xLjgtMkMyMjIuMiwxOC41LDIyMywxNy43LDIyNCwxNy43eiIvPg0KCTxwYXRoIGNsYXNzPSJzdDAiIGQ9Ik0xNi4xLDBMMTYuMSwwaDYuNnY1LjdoLTYuNmMtMSwwLTEuOSwwLjgtMS45LDEuOXYxNS4xSDguNVY3LjZsMCwwYzAtMSwwLjgtMS45LDEuOS0xLjloMC41aDEuNA0KCQljMSwwLDEuOS0wLjgsMS45LTEuOVYxLjlDMTQuMiwwLjgsMTUsMCwxNi4xLDB6Ii8+DQoJPHBvbHlnb24gY2xhc3M9InN0MCIgcG9pbnRzPSI4LjUsNS43IDAsNS43IDAsMCA4LjUsMCAJIi8+DQoJPHBhdGggY2xhc3M9InN0MCIgZD0iTTUzLjksMTUuMVYwaC01Ljd2MTdINTJDNTMsMTcsNTMuOSwxNi4yLDUzLjksMTUuMUw1My45LDE1LjF6Ii8+DQoJPHBhdGggY2xhc3M9InN0MCIgZD0iTTMzLjEsMjIuN0wzMy4xLDIyLjdoMy44VjE3aC0zLjhjLTEsMC0xLjktMC44LTEuOS0xLjlWMGgtNS43djE1LjFsMCwwYzAsMSwwLjgsMS45LDEuOSwxLjloMC41aDEuNA0KCQljMSwwLDEuOSwwLjgsMS45LDEuOXYxLjlDMzEuMiwyMS44LDMyLDIyLjcsMzMuMSwyMi43eiIvPg0KCTxwYXRoIGNsYXNzPSJzdDAiIGQ9Ik00NC40LDIyLjdMNDQuNCwyMi43aDMuOFYxN2gtMy44Yy0xLDAtMS45LTAuOC0xLjktMS45VjBoLTUuN3YxNS4xbDAsMGMwLDEsMC44LDEuOSwxLjksMS45aDAuNWgxLjQNCgkJYzEsMCwxLjksMC44LDEuOSwxLjl2MS45QzQyLjUsMjEuOCw0My40LDIyLjcsNDQuNCwyMi43eiIvPg0KCTxwYXRoIGNsYXNzPSJzdDAiIGQ9Ik0xMDQuOSw3LjZ2MTUuMWgtNS43di0xN2gzLjhDMTA0LDUuNywxMDQuOSw2LjUsMTA0LjksNy42eiIvPg0KCTxwYXRoIGNsYXNzPSJzdDAiIGQ9Ik04OS44LDBMODkuOCwwaDcuNmMxLDAsMS45LDAuOCwxLjksMS45djMuOGgtOS40Yy0xLDAtMS45LDAuOC0xLjksMS45djE1LjFoLTUuN1Y3LjZsMCwwYzAtMSwwLjgtMS45LDEuOS0xLjkNCgkJaDAuNUg4NmMxLDAsMS45LTAuOCwxLjktMS45VjEuOUM4Ny45LDAuOCw4OC43LDAsODkuOCwweiIvPg0KCTxyZWN0IHg9Ijg2LjIiIHk9IjEzLjIiIGNsYXNzPSJzdDAiIHdpZHRoPSIxNS44IiBoZWlnaHQ9IjMuOCIvPg0KCTxwYXRoIGNsYXNzPSJzdDAiIGQ9Ik02NC4zLDIyLjdMNjQuMywyMi43aDE1LjFWMTdINjQuM2MtMSwwLTEuOS0wLjgtMS45LTEuOXYtMS45VjUuN2gtMy44Yy0xLDAtMS45LDAuOC0xLjksMS45djUuN3YxLjlsMCwwDQoJCWMwLDEsMC44LDEuOSwxLjksMS45aDAuNWgxLjRjMSwwLDEuOSwwLjgsMS45LDEuOXYxLjlDNjIuNCwyMS44LDYzLjIsMjIuNyw2NC4zLDIyLjdMNjQuMywyMi43eiIvPg0KCTxwYXRoIGNsYXNzPSJzdDAiIGQ9Ik03OS40LDBINjQuM2MtMSwwLTEuOSwwLjgtMS45LDEuOXYzLjhoMTdDNzkuNCw1LjcsNzkuNCwwLDc5LjQsMHoiLz4NCgk8cG9seWdvbiBjbGFzcz0ic3QwIiBwb2ludHM9Ijc2LjUsMTMuMiA2MC40LDEzLjIgNjAuNCw5LjQgNzYuNSw5LjQgCSIvPg0KCTxwYXRoIGNsYXNzPSJzdDAiIGQ9Ik0xMTUuMywyMi43TDExNS4zLDIyLjdoMTAuNGMxLDAsMS45LTAuOCwxLjktMS45VjE3aC0xMi4zYy0xLDAtMS45LTAuOC0xLjktMS45di0xLjlWNS43aC0zLjgNCgkJYy0xLDAtMS45LDAuOC0xLjksMS45djUuN3YxLjlsMCwwYzAsMSwwLjgsMS45LDEuOSwxLjloMC41aDEuNGMxLDAsMS45LDAuOCwxLjksMS45djEuOUMxMTMuNCwyMS44LDExNC4yLDIyLjcsMTE1LjMsMjIuNw0KCQlMMTE1LjMsMjIuN3oiLz4NCgk8cGF0aCBjbGFzcz0ic3QwIiBkPSJNMTMwLjQsMGgtMTUuMWMtMSwwLTEuOSwwLjgtMS45LDEuOXYzLjhoMTdMMTMwLjQsMEwxMzAuNCwweiIvPg0KCTxwYXRoIGNsYXNzPSJzdDAiIGQ9Ik0xMjcuNiwxMy4yaC04LjVWOS40aDEyLjNjMSwwLDEuOSwwLjksMS45LDEuOXYxLjlWMTdoLTUuN0MxMjcuNiwxNywxMjcuNiwxMy4yLDEyNy42LDEzLjJ6Ii8+DQo8L2c+DQo8L3N2Zz4NCg==">
+
+---
+
+# Project summary
+
+What does GHC expect from a typechecker plugin?
+
+\#tcplugins channel
+
+https://github.com/nfrisby/tcplugins-zurihac2020
+
+# Talk summary
+
+Expectations-to-effort ratio has a Pareto 80/20 shape
+
+(1) Discuss 0% to 15% &nbsp; (2) Discuss 80% to 85%
+
+---
+
+# Talking points
+
+```haskell
+type TcPlugin = [Ct] -> M (Either Contra Changes)
+
+data Changes = Ok {discharge :: [(EvTerm, Ct)], new :: [Ct]}
+```
+
+(☝ not the real types)
+
+"Simple" constraints | Implication tree
+
+When/why GHC invokes the plugin
+
+Givens | Deriveds | Wanteds | WDs
+
+Simplifiability rules matrix | Suggested stages
+
+???
+
+`CDictCan` | Dictionaries
+
+`CTyEqCan` | Inert substitution
+
+`CFunEqCan` | Flattening
+
+---
+
+# Classic motivation
+
+Why doesn't GHC know `Nat` addition is commutative?
+
+.textblock.width32[
+```haskell
+let f ::
+      KnownNat (x + y) =>
+      Proxy x -> Proxy y -> (KnownNat (y + x) => r) -> r
+    f _ _ k = k
+
+<interactive> error:
+    • Could not deduce (KnownNat (y + x))
+      from the context: KnownNat (x + y)
+
+let g :: Proxy x -> Proxy y -> f (x + y) -> f (y + x)
+    g _ _ x = x
+
+<interactive> error:
+    • Couldn't match type ‘x + y’ with ‘y + x’
+```
+]
+
+---
+
+# My conjecture
+
+.textblock.width25[
+(0) Expert volunteers are pre-occupied
+
+(1) Formal methods is hard
+
+(2) Non-trivial to integrate with the GHC constraint solver
+
+(3) Another 80-20 rule; few applications *need* it
+]
+
+.warn36[Corollary: plugins are hands-on active research]
+
+---
+
+layout: false
+
+# Constraint solver
+
+Misnomers
+
+  * &nbsp; &nbsp; *typechecker plugin* &nbsp; &nbsp; ↦ &nbsp; &nbsp; *constraint solver plugin*
+  * &nbsp; &nbsp; *constraint solver* &nbsp; &nbsp; ↦ &nbsp; &nbsp; *constraint simplifier*
+
+"French school"
+
+  * generate constraints during typechecking
+  * discharge easy ones immediately
+  * revisit hard ones later
+  * &nbsp; &nbsp; ☝ the constraint solver's job
+
+---
+
+# Constraint solver
+
+Conceptual loop
+
+  * if no more *constraints*, done
+  * try builtin rules, loop on any change
+  * try plugins, loop on any change
+  * give up
+
+*OutsideIn(X)* (2016 Vytiniotis et al JFP)
+
+  * plugins expand the *constraint domain* *X*
+  * default *X* = type classes + type families
+      * ie "builtin rules"
+
+--
+
+.warn36[Very easy to cause infinite loop by disagreeing with default *X*.]
+
+---
+
+# Constraint solver
+
+Conceptual loop
+
+  * if no more *constraints*, done
+  * try builtin rules, loop on any change
+  * try plugins, loop on any change &nbsp; (ie `[TcPlugin]`)
+  * give up
+
+```haskell
+type TcPlugin = [Ct] -> M (Either Contra Changes)
+```
+---
+
+# Implication tree
+
+Two kinds of constraint
+
+Simple (ie `Ct`)
+
+```haskell
+Eq x
+ToJSON Recipe
+MonadState (Set Id) m
+3 ~ Foo x
+```
+
+Implication (morally not `Ct`)
+
+```haskell
+Ord k => Searchable (Map k v)
+```
+
+--
+
+(Conjunctions)
+
+```haskell
+(Ord a, Show b)
+```
+
+---
+
+# Implication tree
+
+```haskell
+foo :: forall x m. Monoid m => x -> Maybe (m :~: x) -> m
+foo    i = \case
+    Nothing        -> mempty
+    Just  Refl     -> i
+```
+
+&nbsp;
+
+```haskell
+data a :~: b where
+  Refl :: forall . (a ~ b) => a :~: b
+```
+
+---
+
+# Implication tree
+
+```haskell
+foo :: forall x m. Monoid m -> x -> Maybe (m :~: x) -> m
+foo g1 i = \case
+    Nothing        -> mempty g1
+    Just (Refl g2) -> i    ▷ sym g2
+```
+
+ &nbsp; &nbsp; ☝ pidgin Haskell/Core w/ explicit dictionary passing
+
+```haskell
+data a :~: b where
+  Refl :: forall . (a ~ b) -> a :~: b
+```
+
+ &nbsp; &nbsp; ☝ pidgin Haskell/Core w/ explicit dictionary passing
+
+---
+
+# Implication tree
+
+```haskell
+foo :: forall x m. Monoid m -> x -> Maybe (m :~: x) -> m
+foo g1 i = \case
+    Nothing        -> mempty ?w1
+    Just (Refl g2) -> i    ▷ ?w2
+```
+
+.spacer18[&nbsp;] ☝ now with holes
+
+```haskell
+  forall x m.
+      ( Monoid m )   -- g1
+     =>
+      ( Monoid m     -- ?w1
+      , forall .
+            ( m ~ x )   -- g2
+          =>
+            ( x ~ m )   -- ?w2
+      )
+```
+
+---
+
+# Implication tree
+
+```haskell
+foo :: forall x m. Monoid m -> x -> Maybe (m :~: x) -> m
+foo g1 i = \case
+    Nothing        -> mempty ?w1
+    Just (Refl g2) -> i    ▷ ?w2
+```
+
+&nbsp;
+
+```haskell
+              forall x m.
+              ( g1 :: Monoid m ) =>               -- "level" 1
+
+                       |
+        -----------------------------
+        |                           |
+
+ ?w1 :: Monoid m             forall .
+                             ( g2 :: m ~ x ) =>   -- "level" 2
+
+                                    |                
+
+                               ?w2 :: x ~ m
+```
+
+---
+
+# Implication tree
+
+```haskell
+foo :: forall x m. Monoid m -> x -> Maybe (m :~: x) -> m
+foo g1 i = \case
+    Nothing        -> mempty ?w1
+    Just (Refl g2) -> i    ▷ ?w2
+```
+
+&nbsp;
+
+```haskell
+========== TcLevel 1 ==========
+[[G] $dMonoid_a2Gb :: Monoid m_a2G8,   -- ie g1
+ [W] $dMonoid_a2Gd :: Monoid m_a2G8]   -- ie w1
+
+========== TcLevel 2 ==========
+[[G] $dMonoid_a2GA :: Monoid m_a2G8,      -- ie g1
+ [G] co_a2Gz       :: m_a2G8 ~# x_a2G9,   -- ie g2
+ [W] hole{co_a2GC} :: x_a2G9 ~# m_a2G8]   -- ie w2
+```
+
+.spacer12[&nbsp;] ☝ innocently doctored
+
+---
+
+# Implication tree
+
+GHC decomposes implications
+
+So plugins only receive simples
+
+```haskell
+ctFlavour :: Ct -> CtFlavour
+
+data CtFlavour = Given | Wanted | ...
+```
+
+  * G: left of `=>`, we already have its evidence
+  * W: right of `=>`, we must find/construct its evidence
+
+Rules
+
+  * only a G can simplify a G
+  * only a G can simplify a W
+  * W never simplifies anything (causes unhelpful error messages)
+
+---
+
+# Simplifying constraints
+
+Decompose by discharging old and introducing new
+
+Note contravariance!
+
+`oldHole = f2 newHole1 newHole2 ... dict1 dict2 ... :: w`
+
+`newDict = f1 oldDict1 oldDict2 ... :: g`
+
+--
+
+W example
+
+```haskell
+newHole1 :: Show A   -- W
+dict1    :: Show B   -- G
+
+oldHole :: Show (A, B)   -- W
+oldHole = $fShowTuple2 newHole1 dict1   -- ie instance Show (,)
+```
+
+--
+
+```haskell
+ctEvId    :: Ct -> EvVar   -- for new Ws
+
+type TcPlugin = [Ct] -> M (Either Contra Changes)
+
+data Changes = Ok {discharge :: [(EvTerm, Ct)], new :: [Ct]}
+```
+
+---
+
+# Simplifying constraints
+
+Decompose by discharging old and introducing new
+
+Note contravariance!
+
+`oldHole = f2 newHole1 newHole2 ... dict1 dict2 ... :: w`
+
+`newDict = f1 oldDict1 oldDict2 ... :: g`
+
+G example
+
+```haskell
+oldDict1 :: KnownNat (x + y)   -- can discharge this now
+oldDict2 :: KnownNat x 
+
+newDict :: KnownNat y
+newDict = oldDict1 - oldDict2   -- casts elided
+```
+
+```haskell
+ctEvId    :: Ct -> EvVar   -- for old Gs
+
+type TcPlugin = [Ct] -> M (Either Contra Changes)
+
+data Changes = Ok {discharge :: [(EvTerm, Ct)], new :: [Ct]}
+```
+
+---
+
+# Simplifying constraints
+
+Two modes
+
+  * W-mode: plugin receives Ws, maybe Gs too
+  * G-mode: plugin receives only Gs, no Ws
+
+W-mode
+
+  * simplify the Ws, using the Gs
+  * any unsolved Ws become inferred contexts
+
+---
+
+# Simplifying constraints
+
+Two modes
+
+  * W-mode: plugin receives Ws, maybe Gs too
+  * G-mode: plugin receives only Gs, no Ws
+
+G-mode
+
+  * ultimately only necessary for identifying unreachable code<br>(but
+  see #16639)
+  * (maybe establish invariants expected by W-mode?)
+  * (maybe refine inferred contexts?)
+
+--
+
+.warn36[You could ignore at first, but might be hard to add *post hoc*.]
+
+---
+
+# Derived constraints
+
+```haskell
+data CtFlavour = Given | Wanted | Derived | ...
+```
+
+  * D: special case of W, doesn't need evidence
+
+Motivation
+
+  * see *improvement* (1995 Mark Jones FPCA)
+  * "must hold in any possible solution"
+  * ultimately only allows more unification, which might let Ws simplify
+
+Rules
+
+  * G can simplify a D
+  * D can simplify a D  -- key difference from W
+
+--
+
+.warn36[W-mode invoked with only Ds?]
+
+---
+
+# Derived constraints
+
+```haskell
+data CtFlavour = Given | Wanted | Derived | WD
+```
+
+  * WD: an **optimization**, abbreviates a (W, D) pair that happen to be
+  syntactically equal so far
+
+Rules
+
+  * simplified same as a W
+  * sometimes *split* just-in-time into a W and a D
+
+All flavour rules
+
+<table border=1>
+<tr><td>  </td><td>G</td><td>W</td><td>D</td><td>WD</td></tr>
+<tr><td>G </td><td>✓</td><td>✓</td><td>✓</td><td>✓ </td></tr>
+<tr><td>W </td><td> </td><td> </td><td> </td><td>  </td></tr>
+<tr><td>D </td><td> </td><td> </td><td>✓</td><td>✓s</td></tr>
+<tr><td>WD</td><td> </td><td> </td><td>✓</td><td>✓s</td></tr>
+</table>
+
+---
+
+# Derived constraints
+
+This pipeline is simple and sound, maintains a maximal *inertness* invariant
+
+If any stage hits, immediately yield the decompositions to GHC
+
+ &nbsp; (1) G simplify G &nbsp; (only in G-mode?)
+
+ &nbsp; (2) G simplify D + WD + W
+
+ &nbsp; (3) D + WD simplify D
+
+ &nbsp; (4) D + WD simplify WD, splitting
+
+---
+
+# Derived constraints
+
+Ds originate from:
+
+  * functional dependencies `(MonadReader a m, MonadReader b m)`
+  * implicit params `(?x :: a, ?x :: b)`
+  * plugins
+  * not injective type families `(F a ~ F b)`  (see #10833)
+  * (other?)
+
+---
+
+class: center, middle
+
+# Review
+
+"Simple" constraints | Implication tree
+
+When/why GHC invokes the plugin
+
+Givens | Deriveds | Wanteds | WDs
+
+Simplifiability rules matrix | Suggested stages
+
+---
+
+class: center, middle
+
+# Next step
+
+Structure of `Ct`
+
+Building evidence
+
+---
+
+class: center, middle
+
+# Thank you
+
+Please stop by #tcplugins!
+
+https://github.com/nfrisby/tcplugins-zurihac2020/blob/master/Biblio.md
+
+---
+
+exclude: true
+
+`data Ct`: Kinds of Simple
+
+The OutsideIn(X) paper explains how the constraint solver simplifies
+type equality constraints even with hypothetical reasoning. The
+algorithm involves a *canonicalization* step, which yields the
+following kinds of simple. GHC immediately canonicalizes every new
+constraint a plugin yields.
+
+I haven't needed to understand this subset. I'm not even sure the
+solver will let them reach the plugin.
+
+  CIrredCan  "yet-unusable predicates" (eg `c` in `forall c. c => Proxy c -> ...`)
+  CHoleCan   holes (TODO exactly the eponymous surface feature?)
+  CQuantCan  implications
+
+On the other hand, a plugin author must understand these.
+
+  CDictCan	 dictionaries
+  CTyEqCan	 `tv ~ rhs`
+  CFunEqCan	 for *flattening*
+  CNonCanonical	 "other" (it's safe to emit these) (TODO confirm) (not sure if the plugin ever recieves them)
+
+---
+
+exclude: true
+
+Flattening with FunEqs
+
+(Beware overloaded terminology/jargon -- even GHC itself uses *flat*
+to mean more than one thing.)
+
+A key subprocess in OutsideIn(X) is the flattening of type family
+applications.
+
+ (1) A **stuck** type family application has the exact same (TODO
+ qualify this claim?) desired semantics as a universally qualified
+ type variable. The application essentially behaves like a richly
+ structured variable name. (cf "uninterpreted functions" "skolems")
+
+  (2) Thus we can replace equal type family applications by a single
+ fresh type variable as long as we do so consistently.
+
+A FunEq is the let-binding for such a so-called *flattening variable*
+(*flatvar*).
+
+---
+
+exclude: true
+
+To *flatten* a set of constraints is to replace (almost) all type
+family applications by flatvars, freshly bound by FunEqs.
+
+To *unflatten* a set of constraints is to inline all of the FunEqs
+therein.
+
+GHC flattens/unflattens G and W constraints differently. (Recall that
+D is a special-case of W.)
+
+G: Flattened and unflattened exactly once, when GHC enters/exits the
+corresponding implication.
+
+W: Flattened and unflattened repeatedly as part of the solver's
+internal loop. (Sometimes just this can lead to progress.)
+
+---
+
+exclude: true
+
+Beware! We have seen flatvars bound by a G FunEq occurring in a W. This
+is confusing, but not obviously wrong. It's not well-understood
+why/whether a particular FunEq should be a G or a W. It currently
+seems subject to happenstance. (See \#15147.)
+
+Beware! As GHC makes incremental process, a (TODO G?) FunEq flatvar
+sometimes may become owned/bound instead by a (TODO G?) TyEq. I've had
+to figure this out a couple times, but never determined exactly when
+this happens. (TODO When the tyfam app reduces to a tyconst?)
+
+Beware! GHC currently runs plugins after unflattening Ws, so you'll
+never see W FunEqs. This is sometimes convenient, sometimes
+problematic. I'm currently (slowly) working to change it. (See
+\#15147.) (TODO email thread link)
+
+Beware! The repeated flattening/unflattening of Ws churns the uniques
+of both the flatvars and also the constraints themselves (TODO I
+suppose even just canonicalization does this too?) -- so caching
+constraint-specific info between plugin invocations is seemingly
+impossible.
+
+Poll: Maybe Iavor/Divesh/Richard/Ben have thought this through when
+integrating the stack-based SMT interface?
+
+---
+
+exclude: true
+
+Inert substitution
+
+The solver strives to reduce all equality constraints to TyEq; that's
+the base canonical form. If a type equality is not a TyEq, then it
+might as well not be there.
+
+The (G?) TyEqs together constitute the *inert substitution*, which
+essentially constitutes everything known about the in-scope
+`forall`-bound tyvars. Each TyEq is one mapping in the (idempotent)
+substitution.
+    </textarea>
+     <script src="remark-latest.min.js">
+    </script>
+    <script>
+       var slideshow = remark.create();
+    </script>
+  </body>
+</html>

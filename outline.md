@@ -14,11 +14,11 @@
   - [Implementing magic typeclasses](#typeclasses)
   - [Implementing magic type families](#tyfams)
 * [Background knowledge](#background)
-  - [Constraint flavours](#flavours)
-  - [Typeclass constraints](#classes)
-  - [Equality constraints](#eqs)
-  - [Quantified constraints](#qcs)
-  - [Evidence](#evidence)
+  - [Constraints](#constraints)
+    - [Constraint flavours](#flavours)
+    - [Typeclass constraints](#classes)
+    - [Equality constraints](#eqs)
+    - [Quantified constraints](#qcs)
   - [Zonking](#zonking)
   - [Flattening](#flattening)
 
@@ -102,7 +102,7 @@ tcPluginStop  :: PluginState -> TcPluginM ()
 
 for some type `PluginState` that the plugin author can define as desired (in the above example, `()`).
 
-The workhorse of a type-checker plugin is `tcPluginSolve`. Its task is to operate on the constraints it is provided with (`Ct` is GHC's type of constraints, which come in three [flavours](#flavours), in order: given, derived, wanted), before returning a `TcPluginResult`:
+The workhorse of a type-checker plugin is `tcPluginSolve`. Its task is to analyse the constraints it is provided with (`Ct` is GHC's type of constraints, which come in three [flavours](#flavours), in order: given, derived, wanted), before returning a `TcPluginResult`:
 
 ```haskell
 data TcPluginResult
@@ -129,7 +129,9 @@ That is, the plugin can either report a contradiction (with the offending constr
 
 GHC's constraint simplifier/solver runs in a loop, simplifying constraints until no further simplifications are found.
 Only then will plugins be given the chance to handle the constraints.
-If the plugin solved any constraints, or emitted further constraints, this information is passed back to the main constraint solving loop.
+If the plugin solved any constraints, or emitted further constraints, this information will then be passed back to the main constraint solving loop. This continues until there are no more constraints to solve, or GHC reaches the maximum number of constraint solving iterations (customisable with `-fconstraint-solver-iterations=n`; `n=0` for no limit).
+
+GHC keeps track of progress using the notion of __inert__ constraints, on which no further work is deemed possible. Each iteration of the loop attempts to uses the inert constraints to simplify the next work item, until this work item is also inert (maybe even solved). GHC then __kicks-out__ any formerly-inert constraints back onto the work list if the new inert constraint can simplify them.
 
 Note also that GHC's constraint solver can be called for many different reasons, reasons which might not be immediately obvious from the program GHC is attempting to typecheck. One such example is GHC's [ambiguity check](https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/ambiguous_types.html).
 
@@ -152,20 +154,98 @@ Note also that GHC's constraint solver can be called for many different reasons,
 <a name="background"></a>
 # Background knowledge
 
+<a name="constraints"></a>
+## Constraints
+
+In source Haskell, constraints appear to the left of `=>` arrows, and correspond to information that is synthesized by the constraint solver and implicitly passed around. 
+
+Examples include:
+  
+  - [typeclass constraints](#classes) such as `Eq a`,
+  - [equality constraints](#eqs) such as `a ~ b`,
+  - [quantified constraints](#qcs).
+
 <a name="flavours"></a>
-## Constraint flavours
+### Constraint flavours
+
+Constraints come in three different __flavours__:
+
+* \[__G__\] __Given__: we have evidence for this constraint,
+
+* \[__W__\] __Wanted__: we want evidence for this constraint,
+
+* \[__D__\] __Derived__: any solution must satisfy this constraint, but
+  we don't need evidence for it.    
+  Examples include:
+  - superclasses of \[__W__\] class constraints,
+  - equalities arising from functional dependencies or injective type families.
+
 
 <a name="classes"></a>
-## Typeclass constraints
+### Typeclass constraints
+
+Let's take the example of the `Eq` typeclass:
+
+```haskell
+class Eq a where
+  (==) :: a -> a -> Bool
+  (/=) :: a -> a -> Bool
+```
+
+The full type signatures of `Eq` and `(==)` are:
+
+```haskell
+Eq :: Type -> Constraint
+(==) :: Eq a => a -> a -> Bool
+```
+
+Here `Constraint` is the surface-Haskell type of constraints. Consider what happens when a function requires the constraint `Eq a`:
+
+```haskell
+f :: forall a. Eq a => a -> a -> Bool
+f x y = ( x == x ) && ( y == y )
+```
+
+The `Core` for this function is:
+
+```haskell
+f = \ @a ($dEq :: Eq a) (x :: a) (y :: a) -> ( (==) @a $dEq x x ) && ( (==) @a $dEq y y )
+```
+
+That is, the constraint `Eq a` is satisfied by passing an explicit _typeclass dictionary_ to `f`, which is here named `$dEq`. This dictionary is then handed to `(==)`, which simply accesses the field of the record `Eq a` corresponding to the typeclass method `(==)` of `Eq`.
+
+In this case, we see that the __evidence__ for a typeclass constraint is a dictionary for this typeclass; that is, a record of the typeclass methods. For typeclasses with a single method, this record is moreover a _newtype_.
 
 <a name="eqs"></a>
-## Equality constraints
+### Equality constraints
+
+Haskell has two different notions of type equivalence:
+
+  * __nominal equivalence__: two types are the same, e.g. `String` and `[Char]`.
+  * __representational equivalence__: two types have the same representation,
+    e.g. one is a newtype around the other (such as  `Int` and `Sum Int`).
+
+In source Haskell, `a ~ b` is a nominal equivalence between `a` and `b`, whereas `Coercible a b` is a representational equivalence.
+
+The __evidence__ for a type equality `a ~ b` is a coercion from `a` to `b`: the Haskell function
+
+```haskell
+f :: forall a b. ( a ~ b ) => a -> b
+f x = x
+```
+
+results in the `Core`:
+
+```haskell
+f = \ @a @b ($d~ :: a ~ b) (x :: a) ->
+      case eq_sel @Type @a @b $d~ of
+        ( co :: a ~# b ) -> x `cast` ( Sub co :: a ~R# b )
+```
+
+Here `eq_sel` unwraps the coercion `$d~`, giving an unboxed nominal coercion `co :: a ~# b`. This coercion is downgraded to an unboxed representational coercion `Sub co :: a ~R# b`, which is then used to perform a type cast.
 
 <a name="qcs"></a>
-## Quantified constraints
-
-<a name="evidence"></a>
-## Evidence
+### Quantified constraints
 
 <a name="zonking"></a>
 ## Zonking

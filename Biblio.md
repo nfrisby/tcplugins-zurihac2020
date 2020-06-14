@@ -33,6 +33,7 @@ Looks to be 11 years old. Probably inconsistent to varying degrees with current 
   * https://gitlab.haskell.org/ghc/ghc/issues/15248 RAE, coercions too floaty
   * https://gitlab.haskell.org/ghc/ghc/issues/15147 let plugin see Wanted CFunEqs
   * https://gitlab.haskell.org/ghc/ghc/issues/10833 opt-in to injective decomposition
+  * https://gitlab.haskell.org/ghc/ghc/issues/15745 confusing message due to plugin exceptions
   * (can't remember issue number) GHC adds excessive parens when pretty-printing type operators
 
 ## Publications

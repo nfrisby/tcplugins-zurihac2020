@@ -1,7 +1,7 @@
 # Introduction to type-checking plugins
 
 
-* [What typechecker plugins can do](#cando)
+* [What type checker plugins can do](#cando)
   - [Example tasks which are possible](#possible)
   - [Example type-related tasks which are not possible](#impossible)
 * [Basics](#basics)
@@ -25,7 +25,7 @@
 ---
 
 <a name="cando"></a>
-# What typechecker plugins can do
+# What type checker plugins can do
 
 <a name="possible"></a>
 ## Example tasks which are possible
@@ -148,6 +148,89 @@ Note also that GHC's constraint solver can be called for many different reasons,
 
 <a name="tyfams"></a>
 ## Implementing magic type families
+
+Some type classes, like `Coercible` and `Typeable`, are "magic", in the sense that the compiler discharges those constraints without requiring you to write any instances. You can implement your own magic type classes by discharging those constraints inside a type checker plugin.
+
+For example, suppose we define a nullary type class and a definition which requires it:
+
+```haskell
+{-# LANGUAGE MultiParamTypeClasses #-}
+module My.Nullary where
+
+class MyNullary
+
+requireMyNullary :: MyNullary => ()
+requireMyNullary = ()
+```
+
+If we try to call `requireMyNullary` from a function which does not itself require `MyNullary`, we get a `No instance for MyNullary` error.
+
+```haskell
+{-# OPTIONS_GHC -fplugin My.Plugin
+                -fplugin-opt=My.Plugin:Nullary
+  #-}
+module My.Module where
+
+import My.Nullary (requireMyNullary)
+
+unit :: ()
+unit = requireMyNullary
+```
+
+We can get ghc to accept this code by writing a plugin which discharges the wanted `MyNullary` constraints it encounters:
+
+```haskell
+module My.Plugin (plugin) where
+
+import Class (Class(className, classTyCon))
+import FastString (mkFastString)
+import GHC.TcPluginM.Extra (lookupModule, lookupName)
+import MkCore (mkCoreConApps)
+import Module (mkModuleName)
+import Name (Name, mkTcOcc)
+import Plugins (Plugin(pluginRecompile, tcPlugin), defaultPlugin, purePlugin)
+import TcEvidence (EvTerm(EvExpr))
+import TcPluginM (TcPluginM)
+import TcRnTypes (Ct(CDictCan), TcPlugin(TcPlugin, tcPluginInit, tcPluginSolve, tcPluginStop) , TcPluginResult(TcPluginOk)
+  )
+import TyCon (tyConDataCons_maybe)
+
+plugin :: Plugin
+plugin = defaultPlugin
+  { tcPlugin = \_ -> Just $ TcPlugin
+    { tcPluginInit  = pluginInit
+    , tcPluginSolve = pluginSolve
+    , tcPluginStop  = \_ -> pure ()
+    }
+  , pluginRecompile = purePlugin
+  }
+
+pluginInit :: TcPluginM Name
+pluginInit = do
+  myNullaryModule <- lookupModule (mkModuleName "My.Nullary") (mkFastString "my-package")
+  lookupName myNullaryModule (mkTcOcc "MyNullary")
+
+pluginSolve :: Name -> [Ct] -> [Ct] -> [Ct] -> TcPluginM TcPluginResult
+pluginSolve myNullaryName _ _ = go
+  where
+    go :: [Ct] -> TcPluginM TcPluginResult
+    go [] = do
+      pure $ TcPluginOk [] []
+    go (ct@(CDictCan _ class_ _ _) : _) | className class_ == myNullaryName = do
+      let myNullaryClass = class_
+          dictTyCon = classTyCon myNullaryClass
+          Just [dictDataCon] = tyConDataCons_maybe dictTyCon
+      pure $ TcPluginOk [(EvExpr $ mkCoreConApps dictDataCon [], ct)] []
+    go (_ : cts) = do
+      go cts
+```
+
+In `pluginInit`, we first lookup `MyNullary` in the `My.Nullary` module in order to obtain its internal name. Later on, in `go`, we compare internal names in order to make sure we only discharge our `MyNullary` constraint, and not e.g. some other constraint which also happens to be called "MyNullary". We then discharge the constraint by returning it along with the relevant evidence: a dictionary providing an implementation for all the methods of the type class. Since `MyNullary` has zero methods, we can do this by using `mkCoreConApps` to apply the dictionary's data constructor to zero arguments.
+
+We can ignore the rest of the `Ct`s; if they are still relevant after ghc has figured out all the consequences of the simplification we provided, we'll be given another chance to examine them.
+
+## How to implement magic type families
+## How to teach the solver about e.g. arithmetic facts
 
 ---
 

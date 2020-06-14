@@ -1,11 +1,52 @@
+# Introduction to type-checking plugins
+
+
+* [What typechecker plugins can do](#cando)
+  - [Example tasks which are possible](#possible)
+  - [Example type-related tasks which are not possible](#impossible)
+  - [What information the plugin has access to](#info)
+* [Basics](#basics)
+  - [Invoking a plugin](#invoke)
+  - [Defining a plugin](#define)
+* [Examples](#examples)
+  - [Solving a nullary constraint](#nullary)
+  - [Implementing magic typeclasses](#typeclasses)
+  - [Implementing magic type families](#tyfams)
+* [Background knowledge](#background)
+  - [Constraint flavours](#flavours)
+  - [Typeclass constraints](#classes)
+  - [Equality constraints](#eqs)
+  - [Quantified constraints](#qcs)
+  - [Evidence](#evidence)
+  - [Zonking](#zonking)
+  - [Flattening](#flattening)
+
+---
+
+<a name="cando"></a>
 # What typechecker plugins can do
+
+<a name="possible"></a>
 ## Example tasks which are possible
-## Example type-related tasks which are not
-## What info the plugin has access to
+
+<a name="impossible"></a>
+## Example type-related tasks which are not possible
+
+<a name="info"></a>
+## What information the plugin has access to
+
 ### Constraints
+
 ### Evidence
+
 ### Definitions in other files
+
+---
+
+<a name="basics"></a>
 # Basics
+
+<a name="invoke"></a>
 ## Invoking a plugin
 
 A type checker plugin is identified by a module name, e.g. `My.Plugin`. To enable `My.Plugin` in your module, use the `-fplugin` option.
@@ -30,7 +71,8 @@ module My.Module where
 ...
 ```
 
-## The Plugin type
+<a name="define"></a>
+## Defining a Plugin
 
 To provide a type checker plugin, `My.Plugin` must expose a value `plugin :: Plugin` whose `tcPlugin :: Maybe TcPlugin` field is set to a `Just`.
 
@@ -58,18 +100,40 @@ When compiling `My.Module`, `My.Plugin`'s `tcPluginInit` gets called, which prin
 
 Note that `My.Plugin` and `My.Module` must be part of different packages, or at least different targets, e.g. the `library` and `executable` sections of the same cabal file.
 
+<a name="examples"></a>
 # Examples
-## How to teach the solver about e.g. arithmetic facts
-## How to implement magic type families
-## How to implement magic typeclasses
-## How to implement magic nullary constraints
+
+<a name="nullary"></a>
+## Solving a nullary constraint
+
+<a name="typeclasses"></a>
+## Implementing magic typeclasses
+
+<a name="tyfams"></a>
+## Implementing magic type families
+
+---
+
+<a name="background"></a>
 # Background knowledge
+
+<a name="flavours"></a>
+## Constraint flavours
+
+<a name="classes"></a>
 ## Typeclass constraints
+
+<a name="eqs"></a>
 ## Equality constraints
+
+<a name="qcs"></a>
 ## Quantified constraints
+
+<a name="evidence"></a>
 ## Evidence
-## Wanted constraints
-## Given constraints
-## Derived constraints
+
+<a name="zonking"></a>
 ## Zonking
   
+<a name="flattening"></a>
+## Flattening

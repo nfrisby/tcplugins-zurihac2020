@@ -10,7 +10,6 @@
   - [What information the plugin has access to](#info)
   - [When is the plugin invoked?](#invocation)
 * [Examples](#examples)
-  - [Solving a nullary constraint](#nullary)
   - [Implementing magic typeclasses](#typeclasses)
   - [Implementing magic type families](#tyfams)
 * [Background knowledge](#background)
@@ -140,18 +139,12 @@ Note also that GHC's constraint solver can be called for many different reasons,
 <a name="examples"></a>
 # Examples
 
-<a name="nullary"></a>
-## Solving a nullary constraint
-
 <a name="typeclasses"></a>
 ## Implementing magic typeclasses
 
-<a name="tyfams"></a>
-## Implementing magic type families
+Some typeclasses, like `Coercible` and `Typeable`, are "magic", in the sense that the compiler discharges those constraints without requiring you to write any instances. You can implement your own magic typeclasses by discharging those constraints inside a type checker plugin.
 
-Some type classes, like `Coercible` and `Typeable`, are "magic", in the sense that the compiler discharges those constraints without requiring you to write any instances. You can implement your own magic type classes by discharging those constraints inside a type checker plugin.
-
-For example, suppose we define a nullary type class and a definition which requires it:
+For example, suppose we define a nullary typeclass and a definition which requires it:
 
 ```haskell
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -225,12 +218,12 @@ pluginSolve myNullaryName _ _ = go
       go cts
 ```
 
-In `pluginInit`, we first lookup `MyNullary` in the `My.Nullary` module in order to obtain its internal name. Later on, in `go`, we compare internal names in order to make sure we only discharge our `MyNullary` constraint, and not e.g. some other constraint which also happens to be called "MyNullary". We then discharge the constraint by returning it along with the relevant evidence: a dictionary providing an implementation for all the methods of the type class. Since `MyNullary` has zero methods, we can do this by using `mkCoreConApps` to apply the dictionary's data constructor to zero arguments.
+In `pluginInit`, we first lookup `MyNullary` in the `My.Nullary` module in order to obtain its internal name. Later on, in `go`, we compare internal names in order to make sure we only discharge our `MyNullary` constraint, and not e.g. some other constraint which also happens to be called "MyNullary". We then discharge the constraint by returning it along with the relevant evidence: a dictionary providing an implementation for all the methods of the typeclass. Since `MyNullary` has zero methods, we can do this by using `mkCoreConApps` to apply the dictionary's data constructor to zero arguments.
 
 We can ignore the rest of the `Ct`s; if they are still relevant after ghc has figured out all the consequences of the simplification we provided, we'll be given another chance to examine them.
 
-## How to implement magic type families
-## How to teach the solver about e.g. arithmetic facts
+<a name="tyfams"></a>
+## Implementing magic type families
 
 ---
 

@@ -71,7 +71,7 @@ type R = TcRnTypes.TcPluginResult
 skip :: M R
 skip = pure $ TcRnTypes.TcPluginOk [] []
 
--- | A @fmap mconcat . sequence@ that short-circuits on
+-- | Like @fmap mconcat . sequence@, but short-circuits on
 -- 'TcRnTypes.TcPluginContradiction'
 
 mapMR :: (a -> M R) -> [a] -> M R
@@ -98,30 +98,30 @@ mapMR f = go [] []
 --
 -- We also include an additional new constraint @F a1 a2 ... an ~ F c1
 -- c2 ... cn@ for which @ci@ is @ai@ if we are also emitting the new
--- constraint @ai ~ bi@ and @bi@ otherwise.
---
--- Note that we cannot discard the @F ... ~ F ...@ constraint, since
--- some of its arguments might not have fundeps, and so we'd be losing
--- information. We manually update that constraint in case our new
--- point-wise equalities are somehow exotic in such a way that
--- prevents GHC from using them to rewrite the original constraint.
--- Else we risk emitting new constraints forever.
+-- constraint @ai ~ bi@ and @bi@ otherwise. We need this new
+-- constraint, since some of @F@'s arguments might not have fundeps,
+-- and so we'd be losing information if we discarded the original
+-- equality without adding this new one. We manually update that
+-- constraint in case our new point-wise equalities are somehow exotic
+-- in such a way that prevents GHC itself from using them to rewrite
+-- the original constraint. Else we risk emitting new constraints
+-- forever.
 --
 -- Note: we harmlessly but wastefully emit @F a1 .. an ~ F a1 .. an@
--- when @F@ is injective in all of its arguments; GHC will
--- immedicately discharge that spurious constraint, so this doesn't
--- lead to divergence.
+-- when @F@ is injective in all of its arguments; GHC will immediately
+-- discharge that spurious constraint, so this doesn't lead to
+-- divergence.
 
 simplifyG :: FskEnv -> Ct -> M R
 simplifyG fskEnv ct =
     case predTree of
       Type.ClassPred{}  -> skip   -- TODO don't need to unpack SCs, right?
-      Type.IrredPred{}  -> skip
+      Type.IrredPred{}  -> skip   -- TODO this is unreachable, right?
       Type.ForAllPred{} -> skip   -- TODO this is unreachable, right?
       Type.EqPred eqRel lty rty -> case eqRel of
           Type.ReprEq -> skip   -- TODO anything useful to do here?
           Type.NomEq  -> case splitter fskEnv lty rty of
-              Nothing         -> skip
+              Nothing         -> skip   -- not the constraint we're looking for
               Just (tc, args) -> do
                   mbChanges <- go [] [] args
                   case mbChanges of
@@ -155,7 +155,7 @@ simplifyG fskEnv ct =
     -- replace the equality with one with updated RHS arguments
     ok :: TcType -> TyCon -> ([Xi], [Ct]) -> M R
     ok lty tc (rtys', news)
-        | null news = skip
+        | null news = skip   -- we made no changes
         | otherwise = do
         new <- impliedGivenEq ct lty rty'
         pure $ TcRnTypes.TcPluginOk [(ev, ct)] (new:news)
@@ -174,10 +174,7 @@ impliedGivenEq ct lty rty = do
     let
       new_co :: Coercion
       new_co = Coercion.mkUnivCo
-        (TyCoRep.PluginProv "inj-tyfam-plugin")
-        TyCon.Nominal
-        lty
-        rty
+        (TyCoRep.PluginProv "inj-tyfam-plugin") TyCon.Nominal lty rty
 
     -- TODO how to incorporate @ctEvId ct@? (see #15248 on GitLab ghc)
     new_ev <- TcPluginM.newGiven
@@ -193,7 +190,7 @@ impliedGivenEq ct lty rty = do
 
 type FskEnv = VarEnv (TyCon, [Xi])
 
--- | An incremental map from the @FunEq@s
+-- | An map created from the @FunEq@s
 --
 -- NOTE not necessarily idempotent
 
@@ -203,6 +200,8 @@ mkFskEnv cts =
     [ (cc_fsk, (cc_fun, cc_tyargs))
     | TcRnTypes.CFunEqCan{..} <- cts
     ]
+
+-- | Substitute via the 'FskEnv' once
 
 unfsk :: FskEnv -> TcType -> TcType
 unfsk fskEnv t = fromMaybe t $ do
@@ -227,10 +226,10 @@ splitter fskEnv = \lty rty -> do
     guard $ ltc == rtc
 
     case TyCon.tyConInjectivityInfo ltc of
-        TyCon.NotInjective -> Nothing
-        TyCon.Injective is ->
-            -- INVARIANT: @True == or is@
-            Just (ltc, go is ltys rtys)
+      TyCon.NotInjective -> Nothing
+      TyCon.Injective is ->
+          -- INVARIANT: @True == or is@
+          Just (ltc, go is ltys rtys)
 
   where
     prj :: TcType -> Maybe (TyCon, [Xi])

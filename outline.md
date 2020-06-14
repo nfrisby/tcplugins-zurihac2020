@@ -132,6 +132,12 @@ If the plugin solved any constraints, or emitted further constraints, this infor
 
 GHC keeps track of progress using the notion of __inert__ constraints, on which no further work is deemed possible. Each iteration of the loop attempts to uses the inert constraints to simplify the next work item, until this work item is also inert (maybe even solved). GHC then __kicks-out__ any formerly-inert constraints back onto the work list if the new inert constraint can simplify them.
 
+Two different types of invocation are possible:
+  - when GHC has finished simplifying \[__G__\] _given_ constraints,
+  - after [unflattening](#flattening) \[__W__\] _wanted_ constraints.
+
+In the first situation (and only then), the list of wanted constraints provided to the plugin will be empty (and so will be the list of derived constraints).
+
 Note also that GHC's constraint solver can be called for many different reasons, reasons which might not be immediately obvious from the program GHC is attempting to typecheck. One such example is GHC's [ambiguity check](https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/ambiguous_types.html).
 
 ---

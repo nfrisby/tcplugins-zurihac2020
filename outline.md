@@ -218,7 +218,7 @@ pluginSolve myNullaryName _ _ = go
       go cts
 ```
 
-In `pluginInit`, we first lookup `MyNullary` in the `My.Nullary` module in order to obtain its internal name. Later on, in `go`, we compare internal names in order to make sure we only discharge our `MyNullary` constraint, and not e.g. some other constraint which also happens to be called "MyNullary". We then discharge the constraint by returning it along with the relevant evidence: a dictionary providing an implementation for all the methods of the typeclass. Since `MyNullary` has zero methods, we can do this by using `mkCoreConApps` to apply the dictionary's data constructor to zero arguments.
+In `pluginInit`, we first lookup `MyNullary` in the `My.Nullary` module in order to obtain its internal name. Later on, in `go`, we compare internal names in order to make sure we only discharge our `MyNullary` constraint, and not e.g. some other constraint which also happens to be called "MyNullary". We then discharge the constraint by returning it along with the [relevant evidence](#classes): a dictionary providing an implementation for all the methods of the typeclass. Since `MyNullary` has zero methods, we can do this by using `mkCoreConApps` to apply the dictionary's data constructor to zero arguments.
 
 We can ignore the rest of the `Ct`s; if they are still relevant after ghc has figured out all the consequences of the simplification we provided, we'll be given another chance to examine them.
 

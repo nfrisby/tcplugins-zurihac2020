@@ -69,3 +69,4 @@ Looks to be 11 years old. Probably inconsistent to varying degrees with current 
 ## Talks
 
   * 2018 Gabe Dijkstra https://skillsmatter.com/skillscasts/12388-write-your-own-ghc-type-checker-plugins
+  * 2020 Nicolas Frisby https://www.youtube.com/watch?v=sE1qWyQWWVY impliciation trees, Given Wanted Derived WD

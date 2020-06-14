@@ -106,6 +106,11 @@ mapMR f = go [] []
 -- point-wise equalities are somehow exotic in such a way that
 -- prevents GHC from using them to rewrite the original constraint.
 -- Else we risk emitting new constraints forever.
+--
+-- Note: we harmlessly but wastefully emit @F a1 .. an ~ F a1 .. an@
+-- when @F@ is injective in all of its arguments; GHC will
+-- immedicately discharge that spurious constraint, so this doesn't
+-- lead to divergence.
 
 simplifyG :: FskEnv -> Ct -> M R
 simplifyG fskEnv ct =

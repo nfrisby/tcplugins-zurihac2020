@@ -6,29 +6,65 @@ module Plugin.InjTyFam (
   tcPlugin,
   ) where
 
+-- base
 import           Control.Monad (guard)
 import           Data.Maybe (fromMaybe)
 
-import qualified Coercion
-import qualified CoreSyn
-import qualified Plugins
-import           TcEvidence (EvTerm)
-import qualified TcPluginM
-import           TcPluginM (TcPluginM)
-import qualified TcRnMonad
-import qualified TcRnTypes
-import           TcRnTypes (Ct, TcPluginResult, Xi)
-import           TcType (TcType)
-import qualified TyCoRep
-import           TyCoRep (Coercion)
-import qualified TyCon
-import           TyCon (TyCon)
-import qualified Type
-import qualified Unify
-import           VarEnv (VarEnv)
-import qualified VarEnv
+-- ghc
+import qualified GHC.Core
+  as Core
+    ( Expr(..) )
+import qualified GHC.Core.Coercion
+  as Core
+    ( Coercion )
+import qualified GHC.Core.Coercion
+  as Core.Coercion
+    ( mkPrimEqPredRole, mkUnivCo )
+import           GHC.Core.Predicate
+    ( Pred(..), EqRel(..) )
+import qualified GHC.Core.Predicate
+  as Predicate
+    ( classifyPredType )
+import qualified GHC.Core.TyCo.Rep
+  as Core.TyCo.Rep
+    ( UnivCoProvenance(..) )
+import qualified GHC.Core.Type
+  as Core.Type
+    ( eqType, getTyVar_maybe, mkTyConApp, splitTyConApp_maybe )
+import qualified GHC.Plugins
+  as Plugins
+    ( Plugin(..), defaultPlugin, purePlugin )
+import           GHC.Core.TyCon
+    ( TyCon(..) )
+import qualified GHC.Core.TyCon
+  as Core.TyCon
+    ( Injectivity(..), tyConInjectivityInfo )
+import qualified GHC.Core.Unify
+  as Unify
+    ( typesCantMatch )
+import qualified GHC.Tc.Plugin
+  as Tc.Plugin
+    ( newGiven )
+import GHC.Tc.Types
+    ( TcPlugin(..), TcPluginM, TcPluginResult(..) )
+import           GHC.Tc.Types.Constraint
+    ( Ct(..), Xi )
+import qualified GHC.Tc.Types.Constraint
+  as Constraint
+    ( Ct(..), ctPred, ctLoc, ctEvTerm
+    , bumpCtLocDepth, mkNonCanonical
+    )
+import qualified GHC.Tc.Types.Evidence
+  as TcEv
+    ( EvTerm, Role(..) )
+import           GHC.Tc.Utils.TcType
+    ( TcType )
+import           GHC.Types.Var.Env
+    ( VarEnv, lookupVarEnv, mkVarEnv )
 
--- | Just 'tcPlugin', with 'Plugins.purePlugin' set
+--------------------------------------------------------------------------------
+
+-- | Just 'tcPlugin', with 'purePlugin' set
 
 plugin :: Plugins.Plugin
 plugin = Plugins.defaultPlugin
@@ -45,12 +81,12 @@ plugin = Plugins.defaultPlugin
 -- The plugin user is " opting in " to
 -- <https://gitlab.haskell.org/ghc/ghc/issues/10833>
 
-tcPlugin :: TcRnTypes.TcPlugin
-tcPlugin = TcRnTypes.TcPlugin
+tcPlugin :: TcPlugin
+tcPlugin = TcPlugin
     {
-      TcRnTypes.tcPluginInit = pure ()
+      tcPluginInit = pure ()
     ,
-      TcRnTypes.tcPluginSolve = \() gs ds ws -> do
+      tcPluginSolve = \() gs ds ws -> do
         let
           fskEnv :: FskEnv
           fskEnv = mkFskEnv gs
@@ -59,7 +95,7 @@ tcPlugin = TcRnTypes.TcPlugin
           then mapMR (simplifyG fskEnv) gs   -- we handle G-mode
           else skip   -- GHC already handles W-mode
     ,
-      TcRnTypes.tcPluginStop = \() -> pure ()
+      tcPluginStop = \() -> pure ()
     }
 
 -----
@@ -67,21 +103,21 @@ tcPlugin = TcRnTypes.TcPlugin
 -- | The no-op
 
 skip :: TcPluginM TcPluginResult
-skip = pure $ TcRnTypes.TcPluginOk [] []
+skip = pure $ TcPluginOk [] []
 
 -- | Like @fmap mconcat . sequence@ but short-circuits on
--- 'TcRnTypes.TcPluginContradiction'
+-- 'TcPluginContradiction'
 
 mapMR :: (a -> TcPluginM TcPluginResult) -> [a] -> TcPluginM TcPluginResult
 mapMR f = go [] []
   where
     go xs ys = \case
-        []   -> pure $ TcRnTypes.TcPluginOk xs ys
+        []   -> pure $ TcPluginOk xs ys
         a:as -> do
             r <- f a
             case r of
-              TcRnTypes.TcPluginContradiction{} -> pure r
-              TcRnTypes.TcPluginOk x y          -> go (x <> xs) (y <> ys) as
+              TcPluginContradiction{} -> pure r
+              TcPluginOk x y          -> go (x <> xs) (y <> ys) as
 
 -----
 
@@ -112,22 +148,22 @@ mapMR f = go [] []
 
 simplifyG :: FskEnv -> Ct -> TcPluginM TcPluginResult
 simplifyG fskEnv ct =
-    case predTree of
-      Type.ClassPred{}  -> skip   -- TODO don't need to unpack SCs, right?
-      Type.IrredPred{}  -> skip   -- TODO this is unreachable, right?
-      Type.ForAllPred{} -> skip   -- TODO this is unreachable, right?
-      Type.EqPred eqRel lhs rhs -> case eqRel of
-          Type.ReprEq -> skip   -- TODO anything useful to do here?
-          Type.NomEq  -> case mkArgInfos fskEnv lhs rhs of
+    case ctPredicate of
+      ClassPred{}  -> skip   -- TODO don't need to unpack SCs, right?
+      IrredPred{}  -> skip   -- TODO this is unreachable, right?
+      ForAllPred{} -> skip   -- TODO this is unreachable, right?
+      EqPred eqRel lhs rhs -> case eqRel of
+          ReprEq -> skip   -- TODO anything useful to do here?
+          NomEq  -> case mkArgInfos fskEnv lhs rhs of
               Nothing         -> skip   -- not the constraint we're looking for
               Just (tc, args) -> do
                   mbChanges <- extractArgEqs [] [] args
                   case mbChanges of
-                    Nothing -> pure $ TcRnTypes.TcPluginContradiction [ct]
+                    Nothing -> pure $ TcPluginContradiction [ct]
                     Just x  -> updateOriginalCt lhs tc x
   where
-    predTree :: Type.PredTree
-    predTree = Type.classifyPredType (TcRnTypes.ctPred ct)
+    ctPredicate :: Pred
+    ctPredicate = Predicate.classifyPredType (Constraint.ctPred ct)
 
     -- 'Nothing' means contradiction
     -- 'Just' means (updated @rhsArg@s, new constraints)
@@ -137,7 +173,7 @@ simplifyG fskEnv ct =
         MkArgInfo{..} : args
 
             -- nothing to learn at this argument position
-            | not isInjArg || Type.eqType lhsArg rhsArg ->
+            | not isInjArg || Core.Type.eqType lhsArg rhsArg ->
             extractArgEqs (rhsArg : accRhsArgs) accNews args
 
             -- contradiction!
@@ -158,13 +194,13 @@ simplifyG fskEnv ct =
         | null news = skip   -- we made no changes
         | otherwise = do
         new <- impliedGivenEq ct lhs rhs'
-        pure $ TcRnTypes.TcPluginOk [(ev, ct)] (new:news)
+        pure $ TcPluginOk [(ev, ct)] (new:news)
       where
         rhs' :: TcType
-        rhs' = Type.mkTyConApp tc rhsArgs'
+        rhs' = Core.Type.mkTyConApp tc rhsArgs'
 
-        ev :: EvTerm
-        ev = TcRnTypes.ctEvTerm $ TcRnTypes.cc_ev ct
+        ev :: TcEv.EvTerm
+        ev = Constraint.ctEvTerm $ Constraint.cc_ev ct
 
 -- | Emit a new Given equality constraint implied by another Given
 -- equality constraint
@@ -172,17 +208,17 @@ simplifyG fskEnv ct =
 impliedGivenEq :: Ct -> TcType -> TcType -> TcPluginM Ct
 impliedGivenEq ct lhs rhs = do
     let
-      new_co :: Coercion
-      new_co = Coercion.mkUnivCo
-        (TyCoRep.PluginProv "inj-tyfam-plugin") TyCon.Nominal lhs rhs
+      new_co :: Core.Coercion
+      new_co = Core.Coercion.mkUnivCo
+        (Core.TyCo.Rep.PluginProv "inj-tyfam-plugin") TcEv.Nominal lhs rhs
 
     -- TODO how to incorporate @ctEvId ct@? (see #15248 on GitLab ghc)
-    new_ev <- TcPluginM.newGiven
-      (TcRnTypes.bumpCtLocDepth (TcRnTypes.ctLoc ct))  -- TODO don't bump?
-      (Type.mkPrimEqPredRole TyCon.Nominal lhs rhs)
-      (CoreSyn.Coercion new_co)
+    new_ev <- Tc.Plugin.newGiven
+      (Constraint.bumpCtLocDepth (Constraint.ctLoc ct))  -- TODO don't bump?
+      (Core.Coercion.mkPrimEqPredRole TcEv.Nominal lhs rhs)
+      (Core.Coercion new_co)
 
-    pure $ TcRnTypes.mkNonCanonical new_ev
+    pure $ Constraint.mkNonCanonical new_ev
 
 -----
 
@@ -196,17 +232,17 @@ type FskEnv = VarEnv (TyCon, [Xi])
 
 mkFskEnv :: [Ct] -> FskEnv
 mkFskEnv cts =
-    VarEnv.mkVarEnv
+    mkVarEnv
     [ (cc_fsk, (cc_fun, cc_tyargs))
-    | TcRnTypes.CFunEqCan{..} <- cts
+    | Constraint.CFunEqCan{..} <- cts
     ]
 
 -- | Substitute via the 'FskEnv' once
 
 unfsk :: FskEnv -> TcType -> TcType
 unfsk fskEnv t = fromMaybe t $ do
-    v <- Type.getTyVar_maybe t
-    uncurry Type.mkTyConApp <$> VarEnv.lookupVarEnv fskEnv v
+    v <- Core.Type.getTyVar_maybe t
+    uncurry Core.Type.mkTyConApp <$> lookupVarEnv fskEnv v
 
 -----
 
@@ -231,16 +267,16 @@ mkArgInfos :: FskEnv -> TcType -> TcType -> Maybe (TyCon, [ArgInfo])
 mkArgInfos fskEnv = \lhs rhs -> do
     let
       prj :: TcType -> Maybe (TyCon, [Xi])
-      prj = Type.splitTyConApp_maybe . unfsk fskEnv
+      prj = Core.Type.splitTyConApp_maybe . unfsk fskEnv
 
     (lhsTyCon, lhsArgs) <- prj lhs
     (rhsTyCon, rhsArgs) <- prj rhs
 
     guard $ lhsTyCon == rhsTyCon
 
-    case TyCon.tyConInjectivityInfo lhsTyCon of
-      TyCon.NotInjective -> Nothing
-      TyCon.Injective is ->
+    case Core.TyCon.tyConInjectivityInfo lhsTyCon of
+      Core.TyCon.NotInjective -> Nothing
+      Core.TyCon.Injective is ->
           -- INVARIANT: @True == or is@
           if n /= length lhsArgs || n /= length rhsArgs
           then error "impossible!"   -- GHC should have caught this already

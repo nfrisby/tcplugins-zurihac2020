@@ -12,8 +12,14 @@ maintainer: nicolas.frisby@gmail.com
 -- copyright:
 -- category:
 
-library
+common common
   default-language: Haskell2010
+  build-depends:
+    base
+      >= 4.12.0 && < 4.16.0
+
+library
+  import: common
   hs-source-dirs:
     src
 
@@ -21,8 +27,8 @@ library
     Plugin.InjTyFam
 
   build-depends:
-      base
-    , ghc
+    ghc
+      >= 8.11.0 && < 8.13.0
 
   ghc-options:         -Wall
                        -Wcompat
@@ -34,14 +40,13 @@ library
                        -Wmissing-export-lists
 
 executable smoke
-  default-language: Haskell2010
+  import: common
   main-is: Main.hs
   hs-source-dirs:
     app
 
   build-depends:
-      base
-    , inj-tyfam-plugin
+    inj-tyfam-plugin
 
   other-modules:
     Prelim

@@ -14,9 +14,10 @@ import qualified CoreSyn
 import qualified Plugins
 import           TcEvidence (EvTerm)
 import qualified TcPluginM
+import           TcPluginM (TcPluginM)
 import qualified TcRnMonad
 import qualified TcRnTypes
-import           TcRnTypes (Ct, Xi)
+import           TcRnTypes (Ct, TcPluginResult, Xi)
 import           TcType (TcType)
 import qualified TyCoRep
 import           TyCoRep (Coercion)
@@ -39,7 +40,7 @@ plugin = Plugins.defaultPlugin
 
 -- | A typechecker plugin that decomposes Given equalities headed by
 -- an injective type family,
--- <https://downloads.haskell.org/ghc/8.6.5/docs/html/users_guide/glasgow_exts.html#injective-type-families>
+-- <https://downloads.haskell.org/ghc/8.10.1/docs/html/users_guide/glasgow_exts.html#injective-type-families>
 --
 -- The plugin user is " opting in " to
 -- <https://gitlab.haskell.org/ghc/ghc/issues/10833>
@@ -63,18 +64,15 @@ tcPlugin = TcRnTypes.TcPlugin
 
 -----
 
-type M = TcPluginM.TcPluginM
-type R = TcRnTypes.TcPluginResult
-
 -- | The no-op
 
-skip :: M R
+skip :: TcPluginM TcPluginResult
 skip = pure $ TcRnTypes.TcPluginOk [] []
 
--- | Like @fmap mconcat . sequence@, but short-circuits on
+-- | Like @fmap mconcat . sequence@ but short-circuits on
 -- 'TcRnTypes.TcPluginContradiction'
 
-mapMR :: (a -> M R) -> [a] -> M R
+mapMR :: (a -> TcPluginM TcPluginResult) -> [a] -> TcPluginM TcPluginResult
 mapMR f = go [] []
   where
     go xs ys = \case
@@ -88,80 +86,82 @@ mapMR f = go [] []
 -----
 
 -- | For a Given constraint @F a1 a2 ... an ~ F b1 b2 ... bn@ where
--- @F@ is a type family with functional dependencies, we replace the
+-- @F@ is a type family with an injectivity annotation, we replace the
 -- constraint by new refined constraints.
 --
 -- The new constraints are @ai ~ bi@ for each argument position @i@
 -- that @F@ declares to be injective and where @ai@ and @bi@ are not
--- manfiestly equal. This addresses @#10833@. Also, if any @ai@ and
+-- manifestly equal. This addresses @#10833@. Also, if any @ai@ and
 -- @bi@ are manifestly apart, we report a contradiction.
 --
 -- We also include an additional new constraint @F a1 a2 ... an ~ F c1
 -- c2 ... cn@ for which @ci@ is @ai@ if we are also emitting the new
 -- constraint @ai ~ bi@ and @bi@ otherwise. We need this new
--- constraint, since some of @F@'s arguments might not have fundeps,
--- and so we'd be losing information if we discarded the original
--- equality without adding this new one. We manually update that
--- constraint in case our new point-wise equalities are somehow exotic
--- in such a way that prevents GHC itself from using them to rewrite
--- the original constraint. Else we risk emitting new constraints
--- forever.
+-- constraint, since some of @F@'s arguments might not be annotated as
+-- injective, and so we'd be losing information if we discarded the
+-- original equality without adding this new one. We manually update
+-- that constraint in case our new point-wise equalities are somehow
+-- exotic in such a way that prevents GHC itself from using them to
+-- rewrite the original constraint. Else we risk emitting new
+-- constraints forever.
 --
 -- Note: we harmlessly but wastefully emit @F a1 .. an ~ F a1 .. an@
 -- when @F@ is injective in all of its arguments; GHC will immediately
 -- discharge that spurious constraint, so this doesn't lead to
 -- divergence.
 
-simplifyG :: FskEnv -> Ct -> M R
+simplifyG :: FskEnv -> Ct -> TcPluginM TcPluginResult
 simplifyG fskEnv ct =
     case predTree of
       Type.ClassPred{}  -> skip   -- TODO don't need to unpack SCs, right?
       Type.IrredPred{}  -> skip   -- TODO this is unreachable, right?
       Type.ForAllPred{} -> skip   -- TODO this is unreachable, right?
-      Type.EqPred eqRel lty rty -> case eqRel of
+      Type.EqPred eqRel lhs rhs -> case eqRel of
           Type.ReprEq -> skip   -- TODO anything useful to do here?
-          Type.NomEq  -> case splitter fskEnv lty rty of
+          Type.NomEq  -> case mkArgInfos fskEnv lhs rhs of
               Nothing         -> skip   -- not the constraint we're looking for
               Just (tc, args) -> do
-                  mbChanges <- go [] [] args
+                  mbChanges <- extractArgEqs [] [] args
                   case mbChanges of
                     Nothing -> pure $ TcRnTypes.TcPluginContradiction [ct]
-                    Just x  -> ok lty tc x
+                    Just x  -> updateOriginalCt lhs tc x
   where
     predTree :: Type.PredTree
     predTree = Type.classifyPredType (TcRnTypes.ctPred ct)
 
     -- 'Nothing' means contradiction
-    -- 'Just' means (updated rtys, new constraints)
-    go :: [Xi] -> [Ct] -> [Triple] -> M (Maybe ([Xi], [Ct]))
-    go acc1 acc2 = \case
-        MkTriple lty rty i : args
+    -- 'Just' means (updated @rhsArg@s, new constraints)
+    extractArgEqs ::
+        [Xi] -> [Ct] -> [ArgInfo] -> TcPluginM (Maybe ([Xi], [Ct]))
+    extractArgEqs accRhsArgs accNews = \case
+        MkArgInfo{..} : args
 
             -- nothing to learn at this argument position
-            | not i || Type.eqType lty rty ->
-            go (rty : acc1) acc2 args
+            | not isInjArg || Type.eqType lhsArg rhsArg ->
+            extractArgEqs (rhsArg : accRhsArgs) accNews args
 
             -- contradiction!
-            | Unify.typesCantMatch [(lty, rty)] ->
+            | Unify.typesCantMatch [(lhsArg, rhsArg)] ->
             pure Nothing
 
             -- emit new constraint and update the RHS argument
             | otherwise -> do
-            new <- impliedGivenEq ct lty rty
-            go (lty : acc1) (new : acc2) args
+            new <- impliedGivenEq ct lhsArg rhsArg
+            extractArgEqs (lhsArg : accRhsArgs) (new : accNews) args
 
-        [] -> pure $ Just (reverse acc1, acc2)
+        [] -> pure $ Just (reverse accRhsArgs, accNews)
 
     -- replace the equality with one with updated RHS arguments
-    ok :: TcType -> TyCon -> ([Xi], [Ct]) -> M R
-    ok lty tc (rtys', news)
+    updateOriginalCt ::
+        TcType -> TyCon -> ([Xi], [Ct]) -> TcPluginM TcPluginResult
+    updateOriginalCt lhs tc (rhsArgs', news)
         | null news = skip   -- we made no changes
         | otherwise = do
-        new <- impliedGivenEq ct lty rty'
+        new <- impliedGivenEq ct lhs rhs'
         pure $ TcRnTypes.TcPluginOk [(ev, ct)] (new:news)
       where
-        rty' :: TcType
-        rty' = Type.mkTyConApp tc rtys'
+        rhs' :: TcType
+        rhs' = Type.mkTyConApp tc rhsArgs'
 
         ev :: EvTerm
         ev = TcRnTypes.ctEvTerm $ TcRnTypes.cc_ev ct
@@ -169,17 +169,17 @@ simplifyG fskEnv ct =
 -- | Emit a new Given equality constraint implied by another Given
 -- equality constraint
 
-impliedGivenEq :: Ct -> TcType -> TcType -> M Ct
-impliedGivenEq ct lty rty = do
+impliedGivenEq :: Ct -> TcType -> TcType -> TcPluginM Ct
+impliedGivenEq ct lhs rhs = do
     let
       new_co :: Coercion
       new_co = Coercion.mkUnivCo
-        (TyCoRep.PluginProv "inj-tyfam-plugin") TyCon.Nominal lty rty
+        (TyCoRep.PluginProv "inj-tyfam-plugin") TyCon.Nominal lhs rhs
 
     -- TODO how to incorporate @ctEvId ct@? (see #15248 on GitLab ghc)
     new_ev <- TcPluginM.newGiven
       (TcRnTypes.bumpCtLocDepth (TcRnTypes.ctLoc ct))  -- TODO don't bump?
-      (Type.mkPrimEqPredRole TyCon.Nominal lty rty)
+      (Type.mkPrimEqPredRole TyCon.Nominal lhs rhs)
       (CoreSyn.Coercion new_co)
 
     pure $ TcRnTypes.mkNonCanonical new_ev
@@ -190,7 +190,7 @@ impliedGivenEq ct lty rty = do
 
 type FskEnv = VarEnv (TyCon, [Xi])
 
--- | An map created from the @FunEq@s
+-- | A map created from the @FunEq@s
 --
 -- NOTE not necessarily idempotent
 
@@ -212,31 +212,39 @@ unfsk fskEnv t = fromMaybe t $ do
 
 -- | A pair of arguments involved in an actionable equality constraint
 
-data Triple = MkTriple Xi Xi Bool
-      -- ^ the LHS argument, the RHS argument, and whether this
-      -- argument is included in the family's injectivity annotation
+data ArgInfo = MkArgInfo
+    {
+      isInjArg :: Bool
+      -- ^ whether this argument is included in the family's
+      -- injectivity annotation
+    ,
+      lhsArg :: Xi
+      -- ^ the LHS argument at this position
+    ,
+      rhsArg :: Xi
+      -- ^ the RHS argument at this position
+    }
 
--- | See 'Triple'
+-- | See 'ArgInfo'
 
-splitter :: FskEnv -> TcType -> TcType -> Maybe (TyCon, [Triple])
-splitter fskEnv = \lty rty -> do
-    (ltc, ltys) <- prj lty
-    (rtc, rtys) <- prj rty
+mkArgInfos :: FskEnv -> TcType -> TcType -> Maybe (TyCon, [ArgInfo])
+mkArgInfos fskEnv = \lhs rhs -> do
+    let
+      prj :: TcType -> Maybe (TyCon, [Xi])
+      prj = Type.splitTyConApp_maybe . unfsk fskEnv
 
-    guard $ ltc == rtc
+    (lhsTyCon, lhsArgs) <- prj lhs
+    (rhsTyCon, rhsArgs) <- prj rhs
 
-    case TyCon.tyConInjectivityInfo ltc of
+    guard $ lhsTyCon == rhsTyCon
+
+    case TyCon.tyConInjectivityInfo lhsTyCon of
       TyCon.NotInjective -> Nothing
       TyCon.Injective is ->
           -- INVARIANT: @True == or is@
-          Just (ltc, go is ltys rtys)
-
-  where
-    prj :: TcType -> Maybe (TyCon, [Xi])
-    prj = Type.splitTyConApp_maybe . unfsk fskEnv
-
-    go :: [Bool] -> [Xi] -> [Xi] -> [Triple]
-    go []     []         []         = []
-    go (i:is) (lty:ltys) (rty:rtys) =
-        MkTriple lty rty i : go is ltys rtys
-    go _      _          _          = error "impossible"
+          if n /= length lhsArgs || n /= length rhsArgs
+          then error "impossible!"   -- GHC should have caught this already
+          else
+            Just (lhsTyCon, zipWith3 MkArgInfo is lhsArgs rhsArgs)
+        where
+          n = length is

@@ -61,12 +61,14 @@ Looks to be 11 years old. Probably inconsistent to varying degrees with current 
       * kind defaulting [(GitHub)](https://github.com/Tritlo/kind-default-plugin)
       * security flow checking [(GitHub)](https://github.com/Tritlo/mac-lib-plugin)
       * symmetric idempotent normalizer [(GitHub)](https://github.com/Tritlo/ghc-typelits-extra-sianormalise)
+  * 2020 Phil de Joux, "plugs out" https://hackage.haskell.org/package/ghc-plugs-out
 
 ## Posts
 
   * (catalog) Matthew Pickering https://mpickering.github.io/plugins.html
   * 2016 Baaij Christiaan https://christiaanb.github.io/posts/type-checker-plugin/
   * 2019 Sandy Maguire https://reasonablypolymorphic.com/blog/faking-fundeps/
+  * 2020 Phil de Joux https://blockscope.com/posts/2020-07-09-plugs-out.html
 
 ## Talks
 
